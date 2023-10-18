@@ -1,0 +1,213 @@
+---
+title: "Stability Check"
+author: "Yuning Pan"
+date: "2023-07-26"
+output: html_document
+---
+
+This file aims to check the stability of the prediction of the ensemble frameworks on the holdout dataset.
+```{r}
+library(readxl)
+library("xlsx")
+cruciforms <- readRDS("/projectnb/darpa/pyuning/frag modeling/Ensemble models/cruciforms.rds")
+fragments <- readRDS("/projectnb/darpa/pyuning/frag modeling/Ensemble models/fragments.rds")
+cruciform = paste0(cruciforms$cruciform,'-',cruciforms$Solvent)
+results_c <- readRDS("/projectnb/darpa/pyuning/frag modeling/Ensemble models/results_c.rds")
+results_f <- readRDS("/projectnb/darpa/pyuning/frag modeling/Ensemble models/results_f.rds")
+```
+
+```{r}
+cruciforms$Solvent = as.numeric(as.factor(cruciforms$Solvent))
+fragments$Solvent = as.numeric(as.factor(fragments$Solvent))
+cruciforms = cruciforms[,c('HOMO','EG','Lmax','KK','Solvent','Emission')]
+fragments = fragments[,c('2,6 HOMO','2,6 EG','2,6 Lmax','2,6 KK','4,8 HOMO','4,8 EG','4,8 Lmax','4,8 KK','Solvent','Emission')]
+
+#data for cruciform model
+data_c_variables <- as.matrix(cruciforms[1:81,-ncol(cruciforms)])
+data_c_y <- cruciforms[1:81,"Emission"]
+validate_c_variables <- as.matrix(cruciforms[82:89,-ncol(cruciforms)])
+validate_c_y <- cruciforms[82:89,"Emission"]
+
+#data for fragment model
+data_f_variables <- as.matrix(fragments[1:81,-ncol(fragments)])
+data_f_y <- fragments[1:81,"Emission"]
+validate_f_variables <- as.matrix(fragments[82:89,-ncol(fragments)])
+validate_f_y <- fragments[82:89,"Emission"]
+```
+
+
+```{r}
+library("caret")    # for the confusionmatrix() function (also needs e1071 package)
+set.seed(2023);idx = sample(1:81,8)
+c_pred = data.frame(matrix(ncol = 8, nrow = 100))
+for (i in 1:100) {
+  c_pred[i,] = predict(results_c[1,i][[1]], data_c_variables[idx,])
+}
+hist(c_pred$X1)
+```
+
+```{r}
+library("xgboost")  # the main algorithm
+library("caret")    # for the confusionmatrix() function (also needs e1071 package)
+
+#Model & CV Settings
+grid_tune <- expand.grid(
+  nrounds = c(50,75,100), #number of trees
+  max_depth = c(2,4,6),
+  eta = c(0.025,0.05,0.1,0.3), #c(0.025,0.05,0.1,0.3), #Learning rate
+  gamma = c(0, 0.05, 0.1, 0.5, 0.7, 0.9, 1.0), # pruning --> Should be tuned. i.e c(0, 0.05, 0.1, 0.5, 0.7, 0.9, 1.0)
+  colsample_bytree = 0.7, # c(0.4, 0.6, 0.8, 1.0) subsample ratio of columns for tree
+  min_child_weight = 1, # c(1,2,3) # the larger, the more conservative the model
+  #is; can be used as a stop
+  subsample = 0.7 # c(0.5, 0.75, 1.0) # used to prevent overfitting by sampling X% training
+)
+
+train_control <- trainControl(method = "cv",
+                              number=9,
+                              verboseIter = FALSE,
+                              allowParallel = TRUE)
+
+
+#Cruciform model
+XGB_C <- function(folds = 10, seeds = 2023){
+  set.seed(seeds);index = sample(length(data_c_y), size = length(data_c_y)/folds)
+  train_c_data <- data_c_variables[-index,]
+  test_c_data <- data_c_variables[index,]
+  train_c_y <- data_c_y[-index]
+  test_c_y <- data_c_y[index]
+  set.seed(2023);xgb_tune <- caret::train(x = train_c_data, y = train_c_y, trControl = train_control, tuneGrid = grid_tune, method= "xgbTree", verbose = FALSE) #1
+  test_mol = cruciform[index]  #2
+  xgb.pred <- predict(xgb_tune, test_c_data)  #3
+  validate.pred <- predict(xgb_tune, validate_c_variables) #4
+  xgb.rmse = caret::RMSE(test_c_y, xgb.pred)   #5
+  validate.rmse = caret::RMSE(validate_c_y, validate.pred)   #6
+  return(list(test_mol,xgb.pred,validate.pred,xgb.rmse,validate.rmse))
+}
+
+#Fragment model
+XGB_F <- function(folds = 10, seeds = 2023){
+  set.seed(seeds);index = sample(length(data_f_y), size = length(data_f_y)/folds)
+  train_f_data <- data_f_variables[-index,]
+  test_f_data <- data_f_variables[index,]
+  train_f_y <- data_f_y[-index]
+  test_f_y <- data_f_y[index]
+  set.seed(2023);xgb_tune <- caret::train(x = train_f_data, y = train_f_y, trControl = train_control, tuneGrid = grid_tune, method= "xgbTree", verbose = FALSE)  #1
+  test_mol = cruciform[index]  #2
+  xgb.pred <- predict(xgb_tune, test_f_data)  #3
+  validate.pred <- predict(xgb_tune, validate_f_variables) #4
+  xgb.rmse = caret::RMSE(test_f_y, xgb.pred)   #5
+  validate.rmse = caret::RMSE(validate_f_y, validate.pred)   #6
+  return(list(test_mol,xgb.pred,validate.pred,xgb.rmse,validate.rmse))
+}
+```
+
+```{r}
+list.of.packages <- c(
+  "foreach",
+  "doParallel",
+  "ranger",
+  "palmerpenguins",
+  "tidyverse",
+  "kableExtra"
+  )
+
+new.packages <- list.of.packages[!(list.of.packages %in% installed.packages()[,"Package"])]
+
+if(length(new.packages) > 0){
+  install.packages(new.packages, dep=TRUE)
+}
+
+#loading packages
+for(package.i in list.of.packages){
+  suppressPackageStartupMessages(
+    library(
+      package.i, 
+      character.only = TRUE
+      )
+    )
+}
+library(foreach)
+parallel::detectCores()
+n.cores <- parallel::detectCores() - 1
+my.cluster <- parallel::makeCluster(
+  n.cores, 
+  type = "PSOCK"
+  )
+print(my.cluster)
+doParallel::registerDoParallel(cl = my.cluster) #register it to be used by %dopar%
+foreach::getDoParRegistered() #check if it is registered
+foreach::getDoParWorkers()  #how many workers are available
+```
+
+```{r}
+iterations = 1000
+
+stability_results_c <- foreach(i=1:iterations, .combine = 'cbind',.packages='ALEPlot') %dopar%
+  {
+    XGB_C(folds = 10, seeds = i)
+  }
+
+stability_results_f <- foreach(i=1:iterations, .combine = 'cbind',.packages='ALEPlot') %dopar%
+  {
+    XGB_F(folds = 10, seeds = i)
+  }
+stopCluster(my.cluster)
+```
+
+```{r}
+saveRDS(stability_results_c, "/projectnb/darpa/pyuning/frag modeling/Ensemble models/RMSE diagnostics for ensemble model/stability_results_c.rds")
+saveRDS(stability_results_f, "/projectnb/darpa/pyuning/frag modeling/Ensemble models/RMSE diagnostics for ensemble model/stability_results_f.rds")
+```
+
+```{r}
+stability_results_c <- readRDS("/projectnb/darpa/pyuning/frag modeling/Ensemble models/RMSE diagnostics for ensemble model/stability_results_c.rds")
+stability_results_f <- readRDS("/projectnb/darpa/pyuning/frag modeling/Ensemble models/RMSE diagnostics for ensemble model/stability_results_f.rds")
+```
+
+prediction by the components on some random unseen molecules in the cruciform dataset 
+```{r}
+library(ggplot2)
+library(viridis)
+library(dplyr)
+c_pred = c()
+c_name = c()
+for (i in 1:1000) {
+  c_pred = c(c_pred, stability_results_c[2,i][[1]])
+  c_name = c(c_name, stability_results_c[1,i][[1]])
+}
+c_table = as.data.frame(cbind(c_name,c_pred))
+set.seed(2023);cru_names = sample(cruciform,8)
+c_table_set = subset(c_table, c_name %in% cru_names)
+c_table_set$c_pred = as.numeric(c_table_set$c_pred)
+
+cru_idx = c()
+for (i in 1:length(unique(c_table_set$c_name))) {
+  cru_idx = c(cru_idx, which(cruciform == unique(c_table_set$c_name)[i]))
+}
+
+ensemble_pred = data.frame(matrix(nrow = 100, ncol = 8))
+for (i in 1:100) {
+  ensemble_pred[i,] = predict(results_c[1,i][[1]], data_c_variables[cru_idx,])
+}
+colnames(ensemble_pred) = cruciform[cru_idx]
+ensemble_pred_table = as.data.frame(cbind(rep(cru_names, each = 100), c(ensemble_pred$`48BF-Film`, ensemble_pred$`13b-THF`, ensemble_pred$`26BT48F-Film`, ensemble_pred$`26BT48BF-CHCl3`, ensemble_pred$`SM3-Film`, ensemble_pred$`TP-Film`, ensemble_pred$`SM1-Film`, ensemble_pred$`48T-CHCl3`)))
+colnames(ensemble_pred_table) = c('e_name', 'e_pred')
+ensemble_pred_table$e_pred = as.numeric(ensemble_pred_table$e_pred)
+
+fig = ggplot(data = c_table_set, aes(y=c_pred, x=c_name)) + geom_violin() + xlab('Cruciform-Solvent') + ylab("Wavelength (nm)") + theme(axis.text.x = element_text(size = 25), axis.text.y = element_text(size = 25), axis.title = element_text(size = 20))
+```
+
+holdout set prediction: (violin plot is the predictions by all the components, as shown it has much variation; the red whisker is the theoretical estimation of the variability of the ensemble framework, and it's stable)
+```{r}
+c_holdout_pred = as.data.frame(matrix(ncol = 8, nrow = 100))
+for (i in 1:100) {
+  c_holdout_pred[i,] = predict(results_c[1,i][[1]], validate_c_variables)
+}
+colnames(c_holdout_pred) = cruciform[82:89]
+holdout_tab = as.data.frame(cbind(rep(cruciform[82:89], each = 100), c(c_holdout_pred$`VT26Ad48C2-Film`, c_holdout_pred$`VT26Ad48C3-Film`, c_holdout_pred$`VT26P48C2-Film`, c_holdout_pred$`VT26P43C3-Film`, c_holdout_pred$`VT26Ad48C2-CHCl3`, c_holdout_pred$`VT26Ad48C3-CHCl3`, c_holdout_pred$`VT26P48C2-CHCl3`, c_holdout_pred$`VT26P43C3-CHCl3`)))
+colnames(holdout_tab) = c('c_name', 'c_pred')
+holdout_tab$c_pred = as.numeric(holdout_tab$c_pred)
+
+fig_holdout = ggplot(data = holdout_tab, aes(x = c_name, y = c_pred)) + geom_violin() + stat_summary(fun.data=mean_sdl, fun.args = list(mult = 0.2), geom="pointrange", color="red") + xlab('Cruciform-Solvent') + ylab('Wavelength (nm)') + theme(axis.text.x = element_text(size = 21), axis.text.y = element_text(size = 25), axis.title = element_text(size = 20))
+
+```

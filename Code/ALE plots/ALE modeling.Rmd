@@ -1,0 +1,209 @@
+---
+title: "model for bivariate ale"
+author: "Yuning Pan"
+date: "2023-06-05"
+output: html_document
+---
+
+this file is used to extract all univariate and bivariate ALE info, and the two .R files used these info to generate all the ensemble ALE plots.
+```{r}
+library(readxl)
+library("xlsx")
+library(tidyverse)
+library(foreach)
+
+cruciforms <- readRDS("/projectnb/darpa/pyuning/frag modeling/Ensemble models/cruciforms.rds")
+fragments <- readRDS("/projectnb/darpa/pyuning/frag modeling/Ensemble models/fragments.rds")
+#cruciforms = read.xlsx("/projectnb/darpa/pyuning/frag modeling/Ensemble models/data_c.xlsx",1)
+#fragments = read.xlsx("/projectnb/darpa/pyuning/frag modeling/Ensemble models/data_f.xlsx",1)
+cruciforms$Solvent = as.numeric(as.factor(cruciforms$Solvent))
+fragments$Solvent = as.numeric(as.factor(fragments$Solvent))
+cruciforms = cruciforms[,c('HOMO','EG','Lmax','KK','Solvent','Emission')]
+saveRDS(cruciforms, "/projectnb/darpa/pyuning/frag modeling/Ensemble models/ALE plots/ale_bivariate/cruciform model/cruciform ale results/cruciforms.rds")
+fragments = fragments[,c('2,6 HOMO','2,6 EG','2,6 Lmax','2,6 KK','4,8 HOMO','4,8 EG','4,8 Lmax','4,8 KK','Solvent','Emission')]
+saveRDS(fragments, "/projectnb/darpa/pyuning/frag modeling/Ensemble models/ALE plots/ale_bivariate/fragment model/fragment ale results/fragments.rds")
+
+data_c_variables <- as.matrix(cruciforms[1:81,-ncol(cruciforms)])
+data_c_y <- cruciforms[1:81,"Emission"]
+data_f_variables <- as.matrix(fragments[1:81,-ncol(fragments)])
+data_f_y <- fragments[1:81,"Emission"]
+```
+
+cruciform mapping
+```{r}
+c_names = c('HOMO','EG','Lmax','KK')
+c_units = c('eV','eV','nm','')
+c_idx = c(1,2,3,4)
+c_names_comb = t(combn(c_names,2))
+c_idx_comb = t(combn(c_idx,2))
+c_pair = vector()
+c_ale = matrix(ncol = 7,nrow = nrow(c_idx_comb))
+for (i in 1:nrow(c_idx_comb)) {
+  c_ale[i,1] = paste0('ale_c_',c_names_comb[i,1],'&',c_names_comb[i,2])
+  c_ale[i,2] = c_idx_comb[i,1]
+  c_ale[i,3] = c_idx_comb[i,2]
+  c_ale[i,4] = c_names_comb[i,1]
+  c_ale[i,5] = c_names_comb[i,2]
+  c_ale[i,6] = paste0(' (',c_units[c_idx_comb[i,1]],')')
+  c_ale[i,7] = paste0(' (',c_units[c_idx_comb[i,2]],')')
+}
+colnames(c_ale) = c('pairs','index1','index2','name1','name2','unit1','unit2')
+c_ale = as.data.frame(c_ale)
+c_ale$index1 = as.numeric(c_ale$index1)
+c_ale$index2 = as.numeric(c_ale$index2)
+c_ale$unit1[which(c_ale$unit1 == ' ()')] = ''
+c_ale$unit2[which(c_ale$unit2 == ' ()')] = ''
+saveRDS(c_ale, "/projectnb/darpa/pyuning/frag modeling/Ensemble models/ALE plots/ale_bivariate/cruciform model/cruciform ale results/c_ale.rds")
+c_ale <- readRDS("/projectnb/darpa/pyuning/frag modeling/Ensemble models/ALE plots/ale_bivariate/cruciform model/cruciform ale results/c_ale.rds")
+```
+
+fragment mapping
+```{r}
+f_names = c('2,6 HOMO','2,6 EG','2,6 Lmax','2,6 KK','4,8 HOMO','4,8 EG','4,8 Lmax','4,8 KK')
+f_units = c('eV','eV','nm','','eV','eV','nm','')
+f_idx = c(1,2,3,4,5,6,7,8)
+f_names_comb = t(combn(f_names,2))
+f_idx_comb = t(combn(f_idx,2))
+f_pair = vector()
+f_ale = matrix(ncol = 7,nrow = nrow(f_idx_comb))
+for (i in 1:nrow(f_idx_comb)) {
+  f_ale[i,1] = paste0('ale_f_',f_names_comb[i,1],'&',f_names_comb[i,2])
+  f_ale[i,2] = f_idx_comb[i,1]
+  f_ale[i,3] = f_idx_comb[i,2]
+  f_ale[i,4] = f_names_comb[i,1]
+  f_ale[i,5] = f_names_comb[i,2]
+  f_ale[i,6] = paste0(' (',f_units[f_idx_comb[i,1]],')')
+  f_ale[i,7] = paste0(' (',f_units[f_idx_comb[i,2]],')')
+}
+colnames(f_ale) = c('pairs','index1','index2','name1','name2','unit1','unit2')
+f_ale = as.data.frame(f_ale)
+f_ale$index1 = as.numeric(f_ale$index1)
+f_ale$index2 = as.numeric(f_ale$index2)
+f_ale$unit1[which(f_ale$unit1 == ' ()')] = ''
+f_ale$unit2[which(f_ale$unit2 == ' ()')] = ''
+saveRDS(f_ale, "/projectnb/darpa/pyuning/frag modeling/Ensemble models/ALE plots/ale_bivariate/fragment model/fragment ale results/f_ale.rds")
+f_ale <- readRDS("/projectnb/darpa/pyuning/frag modeling/Ensemble models/ALE plots/ale_bivariate/fragment model/fragment ale results/f_ale.rds")
+```
+
+
+model settings
+```{r}
+library("xgboost")  # the main algorithm
+library("caret")    # for the confusionmatrix() function (also needs e1071 package)
+library("dplyr")    # for some data preperation
+library("Ckmeans.1d.dp")
+library(ALEPlot)
+
+yhat <- function(X.model, newdata){
+  predict(X.model, newdata)
+}
+
+grid_tune <- expand.grid(
+  nrounds = c(500,750,100), #number of trees
+  max_depth = c(2,4,6),
+  eta = c(0.025,0.05,0.1,0.3), #c(0.025,0.05,0.1,0.3), #Learning rate
+  gamma = c(0, 0.05, 0.1, 0.5, 0.7, 0.9, 1.0), # pruning --> Should be tuned. i.e c(0, 0.05, 0.1, 0.5, 0.7, 0.9, 1.0)
+  colsample_bytree = 0.7, # c(0.4, 0.6, 0.8, 1.0) subsample ratio of columns for tree
+  min_child_weight = 1, # c(1,2,3) # the larger, the more conservative the model
+  #is; can be used as a stop
+  subsample = 0.7 # c(0.5, 0.75, 1.0) # used to prevent overfitting by sampling X% training
+)
+
+train_control <- trainControl(method = "cv",
+                              number=9,
+                              verboseIter = FALSE,
+                              allowParallel = TRUE)
+
+XGB_C <- function(folds = 10, seeds = 2023){
+  set.seed(seeds);index = sample(length(data_c_y), size = length(data_c_y)/folds)
+  train_c_data <- data_c_variables[-index,]
+  test_c_data <- data_c_variables[index,]
+  train_c_y <- data_c_y[-index]
+  test_c_y <- data_c_y[index]
+  result = list()
+  set.seed(2023);xgb_tune <- caret::train(x = train_c_data, y = train_c_y, trControl = train_control, tuneGrid = grid_tune, method= "xgbTree", verbose = FALSE, verbosity = 0)
+  for (i in 1:nrow(c_ale)) {
+    result = list(assign(c_ale[i,1],ALEPlot(train_c_data, xgb_tune, yhat, J=c(c_ale$index1[i],c_ale$index2[i]), K = 40, NA.plot = TRUE))) %>% append(result, after = 0) # append to the end, if no after = 0, it will append to the head
+  }
+  return(result)
+}
+
+XGB_F <- function(folds = 10, seeds = 2023){
+  set.seed(seeds);index = sample(length(data_f_y), size = length(data_f_y)/folds)
+  train_f_data <- data_f_variables[-index,]
+  test_f_data <- data_f_variables[index,]
+  train_f_y <- data_f_y[-index]
+  test_f_y <- data_f_y[index]
+  result = list()
+  set.seed(2023);xgb_tune <- caret::train(x = train_f_data, y = train_f_y, trControl = train_control, tuneGrid = grid_tune, method= "xgbTree", verbose = FALSE, verbosity = 0)
+  for (i in 1:nrow(f_ale)) {
+    result = list(assign(f_ale[i,1],ALEPlot(train_f_data, xgb_tune, yhat, J=c(f_ale$index1[i],f_ale$index2[i]), K = 40, NA.plot = TRUE))) %>% append(result, after = 0)
+  }
+  return(result)
+}
+```
+
+```{r}
+list.of.packages <- c(
+  "foreach",
+  "doParallel",
+  "ranger",
+  "palmerpenguins",
+  "tidyverse",
+  "kableExtra"
+  )
+
+new.packages <- list.of.packages[!(list.of.packages %in% installed.packages()[,"Package"])]
+
+if(length(new.packages) > 0){
+  install.packages(new.packages, dep=TRUE)
+}
+
+#loading packages
+for(package.i in list.of.packages){
+  suppressPackageStartupMessages(
+    library(
+      package.i, 
+      character.only = TRUE
+      )
+    )
+}
+library(foreach)
+parallel::detectCores()
+n.cores <- parallel::detectCores() - 1
+my.cluster <- parallel::makeCluster(
+  n.cores, 
+  type = "PSOCK"
+  )
+print(my.cluster)
+doParallel::registerDoParallel(cl = my.cluster) #register it to be used by %dopar%
+foreach::getDoParRegistered() #check if it is registered
+foreach::getDoParWorkers()  #how many workers are available
+```
+
+running cruciform model
+```{r}
+iterations = 100
+
+results_c_ale <- foreach(i=1:iterations, .combine = 'cbind',.packages=c('ALEPlot','tidyverse')) %dopar%
+  {
+    XGB_C(folds = 10, seeds = i)
+  }
+saveRDS(results_c_ale, "/projectnb/darpa/pyuning/frag modeling/Ensemble models/ALE plots/ale_bivariate/cruciform model/cruciform ale results/results_c_ale.rds")
+```
+
+running fragment model
+```{r}
+iterations = 100
+
+results_f_ale <- foreach(i=1:iterations, .combine = 'cbind',.packages=c('ALEPlot','tidyverse')) %dopar%
+  {
+    XGB_F(folds = 10, seeds = i)
+  }
+saveRDS(results_f_ale, "/projectnb/darpa/pyuning/frag modeling/Ensemble models/ALE plots/ale_bivariate/fragment model/fragment ale results/results_f_ale.rds")
+```
+
+```{r}
+results_c_ale <- readRDS("/projectnb/darpa/pyuning/frag modeling/Ensemble models/ALE plots/ale_bivariate/cruciform model/cruciform ale results/results_c_ale.rds")
+results_f_ale <- readRDS("/projectnb/darpa/pyuning/frag modeling/Ensemble models/ALE plots/ale_bivariate/fragment model/fragment ale results/results_f_ale.rds")
+```

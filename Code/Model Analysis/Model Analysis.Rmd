@@ -1,0 +1,509 @@
+---
+title: "Model Analysis"
+author: "Yuning Pan"
+date: '2023-03-27'
+output: html_document
+---
+
+This file contains the major analysis outputs from the ensemble frameworks.
+The ALE plots, importance scores, and simple feature analysis and visulization in the main text of the paper are all generated from this file.
+```{r setup, include=FALSE}
+library(ggplot2)
+library(tidyverse)
+library(segmented)
+results_c <- readRDS("/projectnb/darpa/pyuning/frag modeling/Ensemble models/results_c.rds")
+results_f <- readRDS("/projectnb/darpa/pyuning/frag modeling/Ensemble models/results_f.rds")
+library(xlsx)
+cruciforms = read.xlsx("/projectnb/darpa/pyuning/frag modeling/Ensemble models/data_c.xlsx",1)
+fragments = read.xlsx("/projectnb/darpa/pyuning/frag modeling/Ensemble models/data_f.xlsx",1)
+cruciforms <- readRDS("/projectnb/darpa/pyuning/frag modeling/Ensemble models/cruciforms.rds")
+fragments <- readRDS("/projectnb/darpa/pyuning/frag modeling/Ensemble models/fragments.rds")
+```
+
+two way anova
+```{r}
+df = cbind(cruciforms[1:81,1:5],fragments[1:81,1:10])
+
+lm1 = lm(EG ~ `2,6 EG` + `4,8 EG`, data = df)
+summary(lm1)
+
+lm2 = lm(HOMO ~ `2,6 HOMO` + `4,8 HOMO`, data = df)
+summary(lm2)
+
+lm3 = lm(Lmax ~ `2,6 Lmax` + `4,8 Lmax`, data = df)
+summary(lm3)
+
+anova_two_way1 <- aov(EG ~ `2,6 EG` + `4,8 EG`, data = df)
+summary(anova_two_way1)
+
+anova_two_way2 <- aov(HOMO ~ `2,6 HOMO` + `4,8 HOMO`, data = df)
+summary(anova_two_way2)
+
+anova_two_way3 <- aov(Lmax ~ `2,6 Lmax` + `4,8 Lmax`, data = df)
+summary(anova_two_way3)
+```
+
+
+cruciform model importance scores
+```{r}
+library(dplyr)
+importance_c = results_c[7,1][[1]]
+for (i in 2:100){
+  importance_c = merge(importance_c, results_c[7,i][[1]], by = 'row.names')
+  row.names(importance_c) = importance_c[,1]
+  importance_c = importance_c[,-1]
+}
+colnames(importance_c) = paste0('iteration',1:100)
+importance_c_eg = as.numeric(importance_c[1,])
+importance_c_homo = as.numeric(importance_c[2,])
+importance_c_kk = as.numeric(importance_c[3,])
+importance_c_lmax = as.numeric(importance_c[4,])
+importance_c_solvet = as.numeric(importance_c[5,])
+
+#mean importance for each feature
+apply(importance_c, 1, mean)
+
+#histograms of importance for each feature
+hist(importance_c_eg)
+hist(importance_c_homo)
+hist(importance_c_kk)
+hist(importance_c_lmax)
+hist(importance_c_solvet)
+
+rank_c = apply(importance_c, 2, rank)
+#rank of each feature
+apply(rank_c, 1, table)
+```
+
+fragment model importance scores
+```{r}
+importance_f = results_f[7,1][[1]]
+for (i in 2:100){
+  importance_f = merge(importance_f, results_f[7,i][[1]], by = 'row.names')
+  row.names(importance_f) = importance_f[,1]
+  importance_f = importance_f[,-1]
+}
+colnames(importance_f) = paste0('iteration',1:100)
+importance_f_eg1 = as.numeric(importance_f[1,])
+importance_f_homo1 = as.numeric(importance_f[2,])
+importance_f_kk1 = as.numeric(importance_f[3,])
+importance_f_lmax1 = as.numeric(importance_f[4,])
+importance_f_eg2 = as.numeric(importance_f[5,])
+importance_f_homo2 = as.numeric(importance_f[6,])
+importance_f_kk2 = as.numeric(importance_f[7,])
+importance_f_lmax2 = as.numeric(importance_f[8,])
+importance_f_solvet = as.numeric(importance_f[9,])
+
+#mean importance for each feature
+apply(importance_f, 1, mean)
+
+#histograms of importance for each feature
+hist(importance_f_eg1)
+hist(importance_f_homo1)
+hist(importance_f_kk1)
+hist(importance_f_lmax1)
+hist(importance_f_eg2)
+hist(importance_f_homo2)
+hist(importance_f_kk2)
+hist(importance_f_lmax2)
+hist(importance_c_solvet)
+
+rank_f = apply(importance_f, 2, rank)
+#rank of each feature
+apply(rank_f, 1, table)
+```
+
+
+Below generates ALE plots
+
+cruciform HOMO
+```{r}
+c_HOMO_ale = data.frame(cbind(results_c[8,1][[1]][[2]],results_c[8,1][[1]][[3]],paste0('component',1)))
+for (i in 2:100) {
+  c_HOMO_ale = rbind(c_HOMO_ale, data.frame(cbind(results_c[8,i][[1]][[2]],results_c[8,i][[1]][[3]],paste0('component',i))))
+}
+colnames(c_HOMO_ale) = c('HOMO','y','component')
+c_HOMO_ale$y = as.numeric(as.character(c_HOMO_ale$y))
+mean_c_HOMO =  c_HOMO_ale %>% group_by(HOMO) %>% summarise(mean_y = mean(y), lower = quantile(y, 0.05), upper = quantile(y, 0.95))
+c_HOMO_ale$HOMO = as.numeric(as.character(c_HOMO_ale$HOMO))
+mean_c_HOMO$HOMO = as.numeric(as.character(mean_c_HOMO$HOMO))
+
+median(mean_c_HOMO$HOMO[17:18])
+mean(mean_c_HOMO$mean_y[1:17])
+mean(mean_c_HOMO$mean_y[18:47])
+lm_c_homo <- lm(mean_y ~ HOMO, data = mean_c_HOMO)
+segmented_c_homo <- segmented(lm_c_homo,seg.Z = ~HOMO,npsi=2)
+summary(segmented_c_homo)
+
+
+png("/projectnb/darpa/pyuning/frag modeling/Ensemble models/ALE plots/c_HOMO.png", width = 800, height = 500)
+ggplot(data = mean_c_HOMO, aes(x = HOMO, y = mean_y)) + geom_line(col = 'red') + ylim(-60, 60) + theme(legend.position = "none") + geom_ribbon(aes(ymin = lower, ymax = upper), alpha = 0.1, linetype = "blank",fill = 'darkblue') + ylab("Emission") + xlab('HOMO') + geom_rug(data = data.frame(x_train = cruciforms$HOMO), aes(x = x_train), sides = "b", inherit.aes = F)
+dev.off()
+
+#ggplot(data = c_HOMO_ale, aes(x=HOMO, y=y)) + geom_line(aes(group = component,colour='orange')) + geom_rug(data = data.frame(x_train = cruciforms$HOMO), aes(x = x_train), sides = "b", inherit.aes = F) + geom_ribbon(data = mean_c_HOMO, aes(ymin =lower, ymax = upper), alpha = 0.1, linetype = "blank")  + theme(legend.position = "none") + ylab("Emission") + xlab('HOMO')
+```
+
+
+cruciform EG
+```{r}
+c_EG_ale = data.frame(cbind(results_c[9,1][[1]][[2]],results_c[9,1][[1]][[3]],paste0('component',1)))
+for (i in 2:100) {
+  c_EG_ale = rbind(c_EG_ale, data.frame(cbind(results_c[9,i][[1]][[2]],results_c[9,i][[1]][[3]],paste0('component',i))))
+}
+colnames(c_EG_ale) = c('EG','y','component')
+c_EG_ale$y = as.numeric(as.character(c_EG_ale$y))
+mean_c_EG =  c_EG_ale %>% group_by(EG) %>% summarise(mean_y = mean(y), lower = quantile(y, 0.05), upper = quantile(y, 0.95))
+mean_c_EG$EG = as.numeric(as.character(mean_c_EG$EG))
+lm(mean_c_EG$mean_y ~ mean_c_EG$EG)
+
+png("/projectnb/darpa/pyuning/frag modeling/Ensemble models/ALE plots/c_EG.png", width = 800, height = 500)
+ggplot(data = mean_c_EG, aes(x = EG, y = mean_y)) + geom_line(col = 'red') + ylim(-60, 60) + theme(legend.position = "none") + geom_ribbon(aes(ymin = lower, ymax = upper), alpha = 0.1, linetype = "blank",fill = 'darkblue') + ylab("Emission") + xlab('EG')+ geom_rug(data = data.frame(x_train = cruciforms$EG), aes(x = x_train), sides = "b", inherit.aes = F)
+dev.off()
+```
+
+cruciform Lmax
+```{r}
+c_Lmax_ale = data.frame(cbind(results_c[10,1][[1]][[2]],results_c[10,1][[1]][[3]],paste0('component',1)))
+for (i in 2:100) {
+  c_Lmax_ale = rbind(c_Lmax_ale, data.frame(cbind(results_c[10,i][[1]][[2]],results_c[10,i][[1]][[3]],paste0('component',i))))
+}
+colnames(c_Lmax_ale) = c('Lmax','y','component')
+c_Lmax_ale$y = as.numeric(as.character(c_Lmax_ale$y))
+mean_c_Lmax =  c_Lmax_ale %>% group_by(Lmax) %>% summarise(mean_y = mean(y), lower = quantile(y, 0.05), upper = quantile(y, 0.95))
+mean_c_Lmax$Lmax = as.numeric(as.character(mean_c_Lmax$Lmax))
+lm(mean_c_Lmax$mean_y ~ mean_c_Lmax$Lmax)
+
+png("/projectnb/darpa/pyuning/frag modeling/Ensemble models/ALE plots/c_Lmax.png", width = 800, height = 500)
+ggplot(data = mean_c_Lmax, aes(x = Lmax, y = mean_y)) + geom_line(col = 'red') + ylim(-60, 60) + theme(legend.position = "none") + geom_ribbon(aes(ymin = lower, ymax = upper), alpha = 0.1, linetype = "blank",fill = 'darkblue') + ylab("Emission") + xlab('Lmax')+ geom_rug(data = data.frame(x_train = cruciforms$Lmax), aes(x = x_train), sides = "b", inherit.aes = F)
+dev.off()
+```
+
+cruciform KK
+```{r}
+c_KK_ale = data.frame(cbind(results_c[11,1][[1]][[2]],results_c[11,1][[1]][[3]],paste0('component',1)))
+for (i in 2:100) {
+  c_KK_ale = rbind(c_KK_ale, data.frame(cbind(results_c[11,i][[1]][[2]],results_c[11,i][[1]][[3]],paste0('component',i))))
+}
+colnames(c_KK_ale) = c('KK','y','component')
+c_KK_ale$y = as.numeric(as.character(c_KK_ale$y))
+mean_c_KK =  c_KK_ale %>% group_by(KK) %>% summarise(mean_y = mean(y), lower = quantile(y, 0.05), upper = quantile(y, 0.95))
+mean_c_KK$KK = as.numeric(as.character(mean_c_KK$KK))
+
+png("/projectnb/darpa/pyuning/frag modeling/Ensemble models/ALE plots/c_KK.png", width = 800, height = 500)
+ggplot(data = mean_c_KK, aes(x = KK, y = mean_y)) + geom_line(col = 'red') + ylim(-25, 25) + theme(legend.position = "none") + geom_ribbon(aes(ymin = lower, ymax = upper), alpha = 0.1, linetype = "blank",fill = 'darkblue') + ylab("Emission") + xlab('KK')+ geom_rug(data = data.frame(x_train = cruciforms$KK), aes(x = x_train), sides = "b", inherit.aes = F)
+dev.off()
+```
+
+cruciform Solvent
+```{r}
+c_Solvent_ale = data.frame(cbind(results_c[12,1][[1]][[2]],results_c[12,1][[1]][[3]],paste0('component',1)))
+for (i in 2:100) {
+  c_Solvent_ale = rbind(c_Solvent_ale, data.frame(cbind(results_c[12,i][[1]][[2]],results_c[12,i][[1]][[3]],paste0('component',i))))
+}
+colnames(c_Solvent_ale) = c('Solvent','y','component')
+c_Solvent_ale$y = as.numeric(as.character(c_Solvent_ale$y))
+mean_c_Solvent =  c_Solvent_ale %>% group_by(Solvent) %>% summarise(mean_y = mean(y), lower = quantile(y, 0.05), upper = quantile(y, 0.95))
+mean_c_Solvent$Solvent = as.numeric(as.character(mean_c_Solvent$Solvent))
+
+png("/projectnb/darpa/pyuning/frag modeling/Ensemble models/ALE plots/c_Solvent.png", width = 800, height = 500)
+ggplot(data = mean_c_Solvent, aes(x = Solvent, y = mean_y)) + geom_line(col = 'red') + theme(legend.position = "none") + geom_ribbon(aes(ymin = lower, ymax = upper), alpha = 0.1, linetype = "blank",fill = 'darkblue') + ylab("Emission") + xlab('Solvent')
+dev.off()
+```
+
+cruciform HOMO&EG
+```{r}
+c_he_ale =  data.frame(matrix(ncol = 3, nrow = 0))
+for (i in 1:100) {
+  for (m in 1:length(results_c[13,i][[1]][[2]][[1]])) {
+    for (n in 1:1:length(results_c[13,i][[1]][[2]][[2]])) {
+      c_he_ale = rbind(c_he_ale,c(results_c[13,i][[1]][[2]][[1]][m],results_c[13,i][[1]][[2]][[2]][n],results_c[13,i][[1]][[3]][m,n]))
+    }
+  }
+}
+colnames(c_he_ale) = c('HOMO', 'EG', 'y')
+saveRDS(c_he_ale, "/projectnb/darpa/pyuning/frag modeling/Ensemble models/c_he_ale.rds")
+c_he_ale <- readRDS("/projectnb/darpa/pyuning/frag modeling/Ensemble models/c_he_ale.rds")
+c_he_ale$HOMO = as.factor(c_he_ale$HOMO)
+c_he_ale$EG = as.factor(c_he_ale$EG)
+mean_c_he =  c_he_ale %>% group_by(HOMO,EG) %>% summarise(mean_y = mean(y))
+cont_mtx = as.data.frame(matrix(data = mean_c_he$mean_y, ncol = length(levels(mean_c_he$HOMO)), nrow = length(levels(mean_c_he$EG)),byrow = FALSE))
+
+he_pair = cbind(cruciforms$HOMO,cruciforms$EG)
+
+library(plotly)
+
+png("/projectnb/darpa/pyuning/frag modeling/Ensemble models/ALE plots/c_he.png", width = 800, height = 500)
+fig <- plot_ly(x = as.numeric(levels(mean_c_he$HOMO)), y = as.numeric(levels(mean_c_he$EG)) , z = as.matrix(cont_mtx), type = "contour", contours = list(showlabels = TRUE), colorscale = 'Jet')
+fig <- fig %>% colorbar(title = "+/- prediction\nin nm") %>% add_trace(x=~he_pair[,1], y=~he_pair[,2], type = "scatter", color = 'purple') %>% layout(title = "Mean ALE for HOMO & EG",xaxis = list(title = 'HOMO (eV)'), yaxis=list(title='EG (eV)'))
+dev.off()
+```
+
+
+
+
+fragment HOMO1
+```{r}
+f_HOMO1_ale = data.frame(cbind(results_f[8,1][[1]][[2]],results_f[8,1][[1]][[3]],paste0('component',1)))
+for (i in 2:100) {
+  f_HOMO1_ale = rbind(f_HOMO1_ale, data.frame(cbind(results_f[8,i][[1]][[2]],results_f[8,i][[1]][[3]],paste0('component',i))))
+}
+colnames(f_HOMO1_ale) = c('HOMO1','y','component')
+f_HOMO1_ale$y = as.numeric(as.character(f_HOMO1_ale$y))
+mean_f_HOMO1 =  f_HOMO1_ale %>% group_by(HOMO1) %>% summarise(mean_y = mean(y), lower = quantile(y, 0.05), upper = quantile(y, 0.95))
+mean_f_HOMO1$HOMO1 = as.numeric(as.character(mean_f_HOMO1$HOMO1))
+
+png("/projectnb/darpa/pyuning/frag modeling/Ensemble models/ALE plots/f_HOMO1.png", width = 800, height = 500)
+ggplot(data = mean_f_HOMO1, aes(x = HOMO1, y = mean_y)) + geom_line(col = 'red') + ylim(-60, 60) + theme(legend.position = "none") + geom_ribbon(aes(ymin = lower, ymax = upper), alpha = 0.1, linetype = "blank",fill = 'darkblue') + ylab("Emission") + xlab('HOMO1') + geom_rug(data = data.frame(x_train = fragments$A1HOMO), aes(x = x_train), sides = "b", inherit.aes = F)
+dev.off()
+```
+
+fragment EG1
+```{r}
+f_EG1_ale = data.frame(cbind(results_f[9,1][[1]][[2]],results_f[9,1][[1]][[3]],paste0('component',1)))
+for (i in 2:100) {
+  f_EG1_ale = rbind(f_EG1_ale, data.frame(cbind(results_f[9,i][[1]][[2]],results_f[9,i][[1]][[3]],paste0('component',i))))
+}
+colnames(f_EG1_ale) = c('EG1','y','component')
+f_EG1_ale$y = as.numeric(as.character(f_EG1_ale$y))
+mean_f_EG1 =  f_EG1_ale %>% group_by(EG1) %>% summarise(mean_y = mean(y), lower = quantile(y, 0.05), upper = quantile(y, 0.95))
+mean_f_EG1$EG1 = as.numeric(as.character(mean_f_EG1$EG1))
+
+lm_f_eg1 <- lm(mean_y ~ EG1, data = mean_f_EG1)
+segmented_f_eg1 <- segmented(lm_f_eg1,seg.Z = ~EG1)
+summary(segmented_f_eg1)
+summary(lm_f_eg1)
+
+png("/projectnb/darpa/pyuning/frag modeling/Ensemble models/ALE plots/f_EG1.png", width = 800, height = 500)
+ggplot(data = mean_f_EG1, aes(x = EG1, y = mean_y)) + geom_line(col = 'red') + ylim(-60, 60) + theme(legend.position = "none") + geom_ribbon(aes(ymin = lower, ymax = upper), alpha = 0.1, linetype = "blank",fill = 'darkblue') + ylab("Emission") + xlab('EG1') + geom_rug(data = data.frame(x_train = fragments$A1EG), aes(x = x_train), sides = "b", inherit.aes = F)
+dev.off()
+```
+
+fragment Lmax1
+```{r}
+f_Lmax1_ale = data.frame(cbind(results_f[10,1][[1]][[2]],results_f[10,1][[1]][[3]],paste0('component',1)))
+for (i in 2:100) {
+  f_Lmax1_ale = rbind(f_Lmax1_ale, data.frame(cbind(results_f[10,i][[1]][[2]],results_f[10,i][[1]][[3]],paste0('component',i))))
+}
+colnames(f_Lmax1_ale) = c('Lmax1','y','component')
+f_Lmax1_ale$y = as.numeric(as.character(f_Lmax1_ale$y))
+mean_f_Lmax1 =  f_Lmax1_ale %>% group_by(Lmax1) %>% summarise(mean_y = mean(y), lower = quantile(y, 0.05), upper = quantile(y, 0.95))
+mean_f_Lmax1$Lmax1 = as.numeric(as.character(mean_f_Lmax1$Lmax1))
+
+lm_f_lmax1 <- lm(mean_y ~ Lmax1, data = mean_f_Lmax1)
+segmented_f_lmax1 <- segmented(lm_f_lmax1,seg.Z = ~Lmax1)
+summary(segmented_f_lmax1)
+
+png("/projectnb/darpa/pyuning/frag modeling/Ensemble models/ALE plots/f_Lmax1.png", width = 800, height = 500)
+ggplot(data = mean_f_Lmax1, aes(x = Lmax1, y = mean_y)) + geom_line(col = 'red') + ylim(-60, 60) + theme(legend.position = "none") + geom_ribbon(aes(ymin = lower, ymax = upper), alpha = 0.1, linetype = "blank",fill = 'darkblue') + ylab("Emission") + xlab('Lmax1') + geom_rug(data = data.frame(x_train = fragments$A1Lmax), aes(x = x_train), sides = "b", inherit.aes = F)
+dev.off()
+```
+
+fragment KK1
+```{r}
+f_KK1_ale = data.frame(cbind(results_f[11,1][[1]][[2]],results_f[11,1][[1]][[3]],paste0('component',1)))
+for (i in 2:100) {
+  f_KK1_ale = rbind(f_KK1_ale, data.frame(cbind(results_f[11,i][[1]][[2]],results_f[11,i][[1]][[3]],paste0('component',i))))
+}
+colnames(f_KK1_ale) = c('KK1','y','component')
+f_KK1_ale$y = as.numeric(as.character(f_KK1_ale$y))
+mean_f_KK1 =  f_KK1_ale %>% group_by(KK1) %>% summarise(mean_y = mean(y), lower = quantile(y, 0.05), upper = quantile(y, 0.95))
+mean_f_KK1$KK1 = as.numeric(as.character(mean_f_KK1$KK1))
+
+png("/projectnb/darpa/pyuning/frag modeling/Ensemble models/ALE plots/f_KK1.png", width = 800, height = 500)
+ggplot(data = mean_f_KK1, aes(x = KK1, y = mean_y)) + geom_line(col = 'red') + ylim(-25, 25) + theme(legend.position = "none") + geom_ribbon(aes(ymin = lower, ymax = upper), alpha = 0.1, linetype = "blank",fill = 'darkblue') + ylab("Emission") + xlab('KK1') + geom_rug(data = data.frame(x_train = fragments$A1KK), aes(x = x_train), sides = "b", inherit.aes = F)
+dev.off()
+```
+
+fragment HOMO2
+```{r}
+f_HOMO2_ale = data.frame(cbind(results_f[12,1][[1]][[2]],results_f[12,1][[1]][[3]],paste0('component',1)))
+for (i in 2:100) {
+  f_HOMO2_ale = rbind(f_HOMO2_ale, data.frame(cbind(results_f[12,i][[1]][[2]],results_f[12,i][[1]][[3]],paste0('component',i))))
+}
+colnames(f_HOMO2_ale) = c('HOMO2','y','component')
+f_HOMO2_ale$y = as.numeric(as.character(f_HOMO2_ale$y))
+mean_f_HOMO2 =  f_HOMO2_ale %>% group_by(HOMO2) %>% summarise(mean_y = mean(y), lower = quantile(y, 0.05), upper = quantile(y, 0.95))
+mean_f_HOMO2$HOMO2 = as.numeric(as.character(mean_f_HOMO2$HOMO2))
+
+median(mean_f_HOMO2$HOMO2[6:7])
+mean(mean_f_HOMO2$mean_y[1:6])
+mean(mean_f_HOMO2$mean_y[7:17])
+
+lm_f_homo2 <- lm(mean_y ~ HOMO2, data = mean_f_HOMO2)
+segmented_f_homo2 <- segmented(lm_f_homo2,npsi = 2, seg.Z = ~HOMO2)
+summary(segmented_f_homo2)
+
+png("/projectnb/darpa/pyuning/frag modeling/Ensemble models/ALE plots/f_HOMO2.png", width = 800, height = 500)
+ggplot(data = mean_f_HOMO2, aes(x = HOMO2, y = mean_y)) + geom_line(col = 'red') + ylim(-60, 60) + theme(legend.position = "none") + geom_ribbon(aes(ymin = lower, ymax = upper), alpha = 0.1, linetype = "blank",fill = 'darkblue') + ylab("Emission") + xlab('HOMO2') + geom_rug(data = data.frame(x_train = fragments$A2HOMO), aes(x = x_train), sides = "b", inherit.aes = F)
+dev.off()
+```
+
+fragment EG2
+```{r}
+f_EG2_ale = data.frame(cbind(results_f[13,1][[1]][[2]],results_f[13,1][[1]][[3]],paste0('component',1)))
+for (i in 2:100) {
+  f_EG2_ale = rbind(f_EG2_ale, data.frame(cbind(results_f[13,i][[1]][[2]],results_f[13,i][[1]][[3]],paste0('component',i))))
+}
+colnames(f_EG2_ale) = c('EG2','y','component')
+f_EG2_ale$y = as.numeric(as.character(f_EG2_ale$y))
+mean_f_EG2 =  f_EG2_ale %>% group_by(EG2) %>% summarise(mean_y = mean(y), lower = quantile(y, 0.05), upper = quantile(y, 0.95))
+mean_f_EG2$EG2 = as.numeric(as.character(mean_f_EG2$EG2))
+
+lm_f_eg2 <- lm(mean_y ~ EG2, data = mean_f_EG2)
+summary(lm_f_eg2)
+segmented_f_eg2 <- segmented(lm_f_eg2,seg.Z = ~EG2)
+summary(segmented_f_eg2)
+
+png("/projectnb/darpa/pyuning/frag modeling/Ensemble models/ALE plots/f_EG2.png", width = 800, height = 500)
+ggplot(data = mean_f_EG2, aes(x = EG2, y = mean_y)) + geom_line(col = 'red') + ylim(-60, 60) + theme(legend.position = "none") + geom_ribbon(aes(ymin = lower, ymax = upper), alpha = 0.1, linetype = "blank",fill = 'darkblue') + ylab("Emission") + xlab('EG2') + geom_rug(data = data.frame(x_train = fragments$A2EG), aes(x = x_train), sides = "b", inherit.aes = F)
+dev.off()
+```
+
+fragment Lmax2
+```{r}
+f_Lmax2_ale = data.frame(cbind(results_f[14,1][[1]][[2]],results_f[14,1][[1]][[3]],paste0('component',1)))
+for (i in 2:100) {
+  f_Lmax2_ale = rbind(f_Lmax2_ale, data.frame(cbind(results_f[14,i][[1]][[2]],results_f[14,i][[1]][[3]],paste0('component',i))))
+}
+colnames(f_Lmax2_ale) = c('Lmax2','y','component')
+f_Lmax2_ale$y = as.numeric(as.character(f_Lmax2_ale$y))
+mean_f_Lmax2 =  f_Lmax2_ale %>% group_by(Lmax2) %>% summarise(mean_y = mean(y), lower = quantile(y, 0.05), upper = quantile(y, 0.95))
+mean_f_Lmax2$Lmax2 = as.numeric(as.character(mean_f_Lmax2$Lmax2))
+lm(mean_f_Lmax2$mean_y ~ mean_f_Lmax2$Lmax2)
+
+png("/projectnb/darpa/pyuning/frag modeling/Ensemble models/ALE plots/f_Lmax2.png", width = 800, height = 500)
+ggplot(data = mean_f_Lmax2, aes(x = Lmax2, y = mean_y)) + geom_line(col = 'red') + ylim(-60, 60) + theme(legend.position = "none") + geom_ribbon(aes(ymin = lower, ymax = upper), alpha = 0.1, linetype = "blank",fill = 'darkblue') + ylab("Emission") + xlab('Lmax2') + geom_rug(data = data.frame(x_train = fragments$A2Lmax), aes(x = x_train), sides = "b", inherit.aes = F)
+dev.off()
+```
+
+fragment KK2
+```{r}
+f_KK2_ale = data.frame(cbind(results_f[15,1][[1]][[2]],results_f[15,1][[1]][[3]],paste0('component',1)))
+for (i in 2:100) {
+  f_KK2_ale = rbind(f_KK2_ale, data.frame(cbind(results_f[15,i][[1]][[2]],results_f[15,i][[1]][[3]],paste0('component',i))))
+}
+colnames(f_KK2_ale) = c('KK2','y','component')
+f_KK2_ale$y = as.numeric(as.character(f_KK2_ale$y))
+mean_f_KK2 =  f_KK2_ale %>% group_by(KK2) %>% summarise(mean_y = mean(y), lower = quantile(y, 0.05), upper = quantile(y, 0.95))
+mean_f_KK2$KK2 = as.numeric(as.character(mean_f_KK2$KK2))
+
+png("/projectnb/darpa/pyuning/frag modeling/Ensemble models/ALE plots/f_KK2.png", width = 800, height = 500)
+ggplot(data = mean_f_KK2, aes(x = KK2, y = mean_y)) + geom_line(col = 'red') + ylim(-25, 25) + theme(legend.position = "none") + geom_ribbon(aes(ymin = lower, ymax = upper), alpha = 0.1, linetype = "blank",fill = 'darkblue') + ylab("Emission") + xlab('KK2') + geom_rug(data = data.frame(x_train = fragments$A2KK), aes(x = x_train), sides = "b", inherit.aes = F)
+dev.off()
+```
+
+fragment Solvent
+```{r}
+f_Solvent_ale = data.frame(cbind(results_f[16,1][[1]][[2]],results_f[16,1][[1]][[3]],paste0('component',1)))
+for (i in 2:100) {
+  f_Solvent_ale = rbind(f_Solvent_ale, data.frame(cbind(results_f[16,i][[1]][[2]],results_f[16,i][[1]][[3]],paste0('component',i))))
+}
+colnames(f_Solvent_ale) = c('Solvent','y','component')
+f_Solvent_ale$y = as.numeric(as.character(f_Solvent_ale$y))
+mean_f_Solvent =  f_Solvent_ale %>% group_by(Solvent) %>% summarise(mean_y = mean(y), lower = quantile(y, 0.05), upper = quantile(y, 0.95))
+mean_f_Solvent$Solvent = as.numeric(as.character(mean_f_Solvent$Solvent))
+
+png("/projectnb/darpa/pyuning/frag modeling/Ensemble models/ALE plots/f_Solvent.png", width = 800, height = 500)
+ggplot(data = mean_f_Solvent, aes(x = Solvent, y = mean_y)) + geom_line(col = 'red') + theme(legend.position = "none") + geom_ribbon(aes(ymin = lower, ymax = upper), alpha = 0.1, linetype = "blank",fill = 'darkblue') + ylab("Emission") + xlab('Solvent')
+dev.off()
+```
+
+
+
+
+
+
+```{r}
+cruciforms = read.xlsx("/projectnb/darpa/pyuning/frag modeling/Ensemble models/data_c.xlsx",1)
+fragments = read.xlsx("/projectnb/darpa/pyuning/frag modeling/Ensemble models/data_f.xlsx",1)
+cruciforms$Solvent = as.numeric(cruciforms$Solvent)
+fragments$Solvent = as.numeric(fragments$Solvent)
+cruciforms = cruciforms[,c('HOMO','EG','Lmax','KK','Solvent','Emission')]
+fragments = fragments[,c('A1HOMO','A1EG','A1Lmax','A1KK','A2HOMO','A2EG','A2Lmax','A2KK','Solvent','Emission')]
+validate_c_y <- cruciforms[82:89,"Emission"]
+validate_f_y <- fragments[82:89,"Emission"]
+
+library('caret')
+c_chcl3_rmse = vector()
+c_film_rmse = vector()
+f_chcl3_rmse = vector()
+f_film_rmse = vector()
+for (i in 1:100) {
+  c_chcl3_rmse[i] = caret::RMSE(validate_c_y[5:8], results_c[1,i][[1]][5:8])
+  c_film_rmse[i] = caret::RMSE(validate_c_y[1:4], results_c[1,i][[1]][1:4])
+  f_chcl3_rmse[i] = caret::RMSE(validate_f_y[5:8], results_f[1,i][[1]][5:8])
+  f_film_rmse[i] = caret::RMSE(validate_f_y[1:4], results_f[1,i][[1]][1:4])
+}
+mean(c_chcl3_rmse)
+mean(c_film_rmse)
+mean(f_chcl3_rmse)
+mean(f_film_rmse)
+```
+feature analysis
+```{r}
+cruciforms = read.xlsx("/projectnb/darpa/pyuning/frag modeling/Ensemble models/data_c.xlsx",1)
+#library(data.table)
+#vec = cruciforms$cruciform
+#ind = as.data.table(vec)[, list(list(.I)), by = vec][,2]
+ind = as.logical(duplicated(cruciforms$cruciform) * (-1) + 1)
+ind[82:89] = FALSE
+
+library(ggplot2)
+library(tidyverse)
+library(cowplot)
+cruciforms <- readRDS("/projectnb/darpa/pyuning/frag modeling/Ensemble models/ALE plots/ale_bivariate/cruciform model/cruciform ale results/cruciforms.rds")
+c_homo_plot = ggplot(cruciforms[ind,], aes(x=HOMO)) + geom_histogram(aes(y=after_stat(density)), colour="black", fill="white") + geom_density(alpha=.2, fill="#FF6666") + xlab('HOMO (eV)') + ylab('Density') + geom_vline(data = cruciforms[82:85,], aes(xintercept=HOMO, color = 'Molecules in\nHoldout Set'), linewidth=1, linetype = 3, show.legend = TRUE) + scale_color_manual(values = 'blue') + labs(colour = element_blank())
+c_eg_plot = ggplot(cruciforms[ind,], aes(x=EG)) + geom_histogram(aes(y=after_stat(density)), colour="black", fill="white") + geom_density(alpha=.2, fill="#FF6666") + xlab(expression(paste(E[g],' (eV)'))) + ylab('') + geom_vline(xintercept=cruciforms$EG[82:85], color="blue", linetype=3, linewidth=1)
+c_lmax_plot = ggplot(cruciforms[ind,], aes(x=Lmax)) + geom_histogram(aes(y=after_stat(density)), colour="black", fill="white") + geom_density(alpha=.2, fill="#FF6666") + xlab(expression(paste(lambda['max']^'abs',' (nm)'))) + ylab('Density') + geom_vline(xintercept=cruciforms$Lmax[82:85], color="blue", linetype=3, linewidth=1)
+c_kk_plot = ggplot(cruciforms[ind,], aes(x=KK)) + geom_histogram(aes(y=after_stat(density)), colour="black", fill="white") + geom_density(alpha=.2, fill="#FF6666") + ylab('') + geom_vline(xintercept=cruciforms$KK[82:85], color="blue", linetype=3, linewidth=1)
+c_legend = get_legend(c_homo_plot)
+c_plot = plot_grid(c_homo_plot + theme(legend.position = 'none'), c_eg_plot , c_lmax_plot, c_kk_plot, nrow = 2, labels = "AUTO") + ggtitle('Cruciform DFT Features Analysis') + theme(plot.title = element_text(hjust = 0.5))
+#c_plot = plot_grid(c_plot, c_legend,rel_widths = c(2.5, .8))
+c_plot
+ggsave(paste0('/projectnb/darpa/pyuning/frag modeling/Ensemble models/cruciform_DFT.png'), width = 6, height = 5)
+```
+
+```{r}
+fragments <- readRDS("/projectnb/darpa/pyuning/frag modeling/Ensemble models/ALE plots/ale_bivariate/fragment model/fragment ale results/fragments.rds")
+
+f_homo1_plot = ggplot(fragments[ind,], aes(x=`2,6 HOMO`)) + geom_histogram(aes(y=after_stat(density)), colour="black", fill="white") + geom_density(alpha=.2, fill="#FF6666") + xlab('2,6 HOMO (eV)') + ylab('Density') + geom_vline(data = fragments[82,], aes(xintercept=`2,6 HOMO`, color = 'Molecules in\nHoldout Set'), linewidth=1, linetype = 3, show.legend = TRUE) + scale_color_manual(values = 'blue') + labs(colour = element_blank())
+f_eg1_plot = ggplot(fragments[ind,], aes(x=`2,6 EG`)) + geom_histogram(aes(y=after_stat(density)), colour="black", fill="white") + geom_density(alpha=.2, fill="#FF6666") + xlab(expression(paste('2,6 ',E[g],' (eV)'))) + ylab('') + geom_vline(xintercept=fragments$`2,6 EG`[82], color="blue", linetype=3, linewidth=1)
+f_lmax1_plot = ggplot(fragments[ind,], aes(x=`2,6 Lmax`)) + geom_histogram(aes(y=after_stat(density)), colour="black", fill="white") + geom_density(alpha=.2, fill="#FF6666") + xlab(expression(paste('2,6 ',lambda['max']^'abs',' (nm)'))) + ylab('')  + geom_vline(xintercept=fragments$`2,6 Lmax`[82], color="blue", linetype=3, linewidth=1)
+f_kk1_plot = ggplot(fragments[ind,], aes(x=`2,6 KK`)) + geom_histogram(aes(y=after_stat(density)), colour="black", fill="white") + geom_density(alpha=.2, fill="#FF6666") + ylab('') + geom_vline(xintercept=fragments$`2,6 KK`[82], color="blue", linetype=3, linewidth=1)
+
+f_homo2_plot = ggplot(fragments[ind,], aes(x=`4,8 HOMO`)) + geom_histogram(aes(y=after_stat(density)), colour="black", fill="white") + geom_density(alpha=.2, fill="#FF6666") + xlab('4,8 HOMO (eV)') + ylab('Density') + geom_vline(xintercept=fragments$`4,8 HOMO`[82:85], color="blue", linetype=3, linewidth=1)
+f_eg2_plot = ggplot(fragments[ind,], aes(x=`4,8 EG`)) + geom_histogram(aes(y=after_stat(density)), colour="black", fill="white") + geom_density(alpha=.2, fill="#FF6666") + xlab(expression(paste('4,8 ',E[g],' (eV)'))) + ylab('') + geom_vline(xintercept=fragments$`4,8 EG`[82:85], color="blue", linetype=3, linewidth=1)
+f_lmax2_plot = ggplot(fragments[ind,], aes(x=`4,8 Lmax`)) + geom_histogram(aes(y=after_stat(density)), colour="black", fill="white") + geom_density(alpha=.2, fill="#FF6666") + xlab(expression(paste('4,8 ',lambda['max']^'abs',' (nm)'))) + ylab('')  + geom_vline(xintercept=fragments$`4,8 Lmax`[82:85], color="blue", linetype=3, linewidth=1)
+f_kk2_plot = ggplot(fragments[ind,], aes(x=`4,8 KK`)) + geom_histogram(aes(y=after_stat(density)), colour="black", fill="white") + geom_density(alpha=.2, fill="#FF6666") + ylab('') + geom_vline(xintercept=fragments$`4,8 KK`[82:85], color="blue", linetype=3, linewidth=1)
+
+f_legend = get_legend(f_homo1_plot)
+f_plot = plot_grid(f_homo1_plot + theme(legend.position = 'none'), f_eg1_plot , f_lmax1_plot, f_kk1_plot, f_homo2_plot, f_eg2_plot , f_lmax2_plot, f_kk2_plot, nrow = 2, labels = "AUTO") + ggtitle('Fragment DFT Features Analysis') + theme(plot.title = element_text(hjust = 0.5))
+#f_plot = plot_grid(f_plot, f_legend,rel_widths = c(5, .8))
+f_plot
+ggsave(paste0('/projectnb/darpa/pyuning/frag modeling/Ensemble models/fragment_DFT.png'), width = 13, height = 5)
+```
+
+
+heterogeneity analysis
+```{r}
+hetero = data.frame(matrix(ncol = 4, nrow = 100))
+colnames(hetero) = c('c_train_rmse','c_test_rmse','f_train_rmse','f_test_rmse')
+for (i in 1:100) {
+  hetero[i,] = c(results_c[11,i][[1]], results_c[2,i][[1]], results_f[14,i][[1]], results_f[2,i][[1]])
+}
+mean(hetero$c_test_rmse)
+mean(hetero$f_test_rmse)
+apply(hetero, 2, mean)
+apply(hetero, 2, sd)
+
+
+plot(1:100, hetero$c_train_rmse, type = 'l', col = 'red', ylim = c(0,50), xlab = 'Iterations', ylab = 'RMSE', main = 'Cruciform Model Training vs. Testing'); lines(x = 1:100, y = hetero$c_test_rmse, col = 'blue', lty = 1); legend('topright',c('training error','
+testing error'),lty=c(1,1),col=c("red","blue"))
+
+
+fig_heter_c = ggplot(data=hetero, aes(x=1:100)) + geom_line(aes(y=c_train_rmse, color = 'Training Errors')) + geom_line(aes(y=c_test_rmse, color = 'Testing Errors')) + ylim(0,60) + scale_colour_manual("", breaks = c("Training Errors", "Testing Errors"), values = c("blue", "red")) + labs(x = 'iterations', y = 'RMSE') + theme(panel.grid=element_blank()) + ggtitle('Cruciform Model Training vs. Testing') + theme(plot.title = element_text(hjust = 0.5))
+ggsave(paste0('/projectnb/darpa/pyuning/frag modeling/Ensemble models/cruciform_hetero.png'), width = 10, height = 5)
+
+fig_heter_f = ggplot(data=hetero, aes(x=1:100)) + geom_line(aes(y=f_train_rmse, color = 'Training Errors')) + geom_line(aes(y=f_test_rmse, color = 'Testing Errors')) + ylim(0,60) + scale_colour_manual("", breaks = c("Training Errors", "Testing Errors"), values = c("blue", "red"))+ labs(x = 'iterations', y = 'RMSE') + theme(panel.grid=element_blank()) + ggtitle('Fragment Model Training vs. Testing') + theme(plot.title = element_text(hjust = 0.5))
+ggsave(paste0('/projectnb/darpa/pyuning/frag modeling/Ensemble models/fragment_hetero.png'), width = 10, height = 5)
+```

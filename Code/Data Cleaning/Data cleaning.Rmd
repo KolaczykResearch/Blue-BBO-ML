@@ -1,0 +1,149 @@
+---
+title: "Data Cleaning"
+author: "Yuning Pan"
+date: '2023-03-13'
+output: html_document
+---
+
+This file is used to clean the raw chemistry datasets: it would combine several Gaussian output datasets and chemistry reaction datasets, and construct two data tables that can be directly fed into cruciform model and fragment model.
+```{r}
+library(readxl)
+library("xlsx")
+cruciforms = read_excel("/projectnb/darpa/pyuning/frag modeling/Ensemble models/Master_List_ORCA.xlsx", sheet = "cruciforms")[,-2]
+fragments = read_excel("/projectnb/darpa/pyuning/frag modeling/Ensemble models/Master_List_ORCA.xlsx", sheet = "fragments")[,-2]
+names(cruciforms) = c('formation','smiles','HOMO','LUMO','EG','Lmax','Dihedral26','Dihedral48','KK','EmisDMF','EmisCHCl3','EmisTHF','EmisFilm')
+names(fragments) = c('fragment','smiles','HOMO','LUMO','EG','Lmax','Dihedral26','Dihedral48','KK')
+for (i in 1:length(fragments$fragment)) {
+  if(fragments$fragment[i] == '9/26T'){
+    fragments$fragment[i] = '26T'
+    break
+  }
+}
+Axis1 = c()
+Axis2 = c()
+cruciform = c()
+for (i in 1:length(cruciforms$formation)) {
+  x = strsplit(gsub(' ','',cruciforms$formation[i]), '\\+|=')
+  Axis1[i] = x[[1]][1]
+  Axis2[i] = x[[1]][2]
+  cruciform[i] = x[[1]][3]
+}
+for (i in 1:length(Axis1)) {
+  if(Axis1[i] == '9'){
+    Axis1[i] = '26T'
+  }
+}
+for (i in 1:length(Axis2)) {
+  if(Axis2[i] == '9'){
+    Axis2[i] = '26T'
+  }
+}
+cruciforms = cruciforms[,!names(cruciforms) %in% 'formation']
+cruciforms = cbind(cbind(cruciform,Axis1,Axis2),cruciforms)
+myvars1 = c('cruciform','Axis1','Axis2','HOMO','LUMO','EG','Lmax','Dihedral26','Dihedral48','KK','EmisDMF')
+myvars2 = c('cruciform','Axis1','Axis2','HOMO','LUMO','EG','Lmax','Dihedral26','Dihedral48','KK','EmisCHCl3')
+myvars3 = c('cruciform','Axis1','Axis2','HOMO','LUMO','EG','Lmax','Dihedral26','Dihedral48','KK','EmisTHF')
+myvars4 = c('cruciform','Axis1','Axis2','HOMO','LUMO','EG','Lmax','Dihedral26','Dihedral48','KK','EmisFilm')
+data1 = as.data.frame(cruciforms[myvars1])
+data2 = as.data.frame(cruciforms[myvars2])
+data3 = as.data.frame(cruciforms[myvars3])
+data4 = as.data.frame(cruciforms[myvars4])
+rownames(data1) = paste(data1$cruciform,' - DMF')
+rownames(data2) = paste(data2$cruciform,' - CHCl3')
+rownames(data3) = paste(data3$cruciform,' - THF')
+rownames(data4) = paste(data4$cruciform,' - Film')
+data1$Solvent = 'DMF'
+data2$Solvent = 'CHCl3'
+data3$Solvent = 'THF'
+data4$Solvent = 'Film'
+colnames(data1)[ncol(data1)-1] = 'Emission'
+colnames(data2)[ncol(data2)-1] = 'Emission'
+colnames(data3)[ncol(data3)-1] = 'Emission'
+colnames(data4)[ncol(data4)-1] = 'Emission'
+data = rbind(data1,data2,data3,data4)
+data$Solvent = as.factor(data$Solvent)
+data = data[complete.cases(data$Emission), c('cruciform','Axis1','Axis2','HOMO','LUMO','EG','Lmax','Dihedral26','Dihedral48','KK','Solvent','Emission')]
+data_c = data[,c('cruciform','HOMO','LUMO','EG','Lmax','Dihedral26','Dihedral48','KK','Solvent','Emission')]
+data_f = data[,c('Axis1','Axis2','Solvent','Emission')]
+myvars1 = c('cruciform','Axis1','Axis2','HOMO','LUMO','EG','Lmax','Dihedral26','Dihedral48','KK','EmisDMF')
+myvars2 = c('cruciform','Axis1','Axis2','HOMO','LUMO','EG','Lmax','Dihedral26','Dihedral48','KK','EmisCHCl3')
+myvars3 = c('cruciform','Axis1','Axis2','HOMO','LUMO','EG','Lmax','Dihedral26','Dihedral48','KK','EmisTHF')
+myvars4 = c('cruciform','Axis1','Axis2','HOMO','LUMO','EG','Lmax','Dihedral26','Dihedral48','KK','EmisFilm')
+data1 = as.data.frame(cruciforms[myvars1])
+data2 = as.data.frame(cruciforms[myvars2])
+data3 = as.data.frame(cruciforms[myvars3])
+data4 = as.data.frame(cruciforms[myvars4])
+#rownames(data1) = paste(data1$cruciform,' - DMF')
+#rownames(data2) = paste(data2$cruciform,' - CHCl3')
+#rownames(data3) = paste(data3$cruciform,' - THF')
+#rownames(data4) = paste(data4$cruciform,' - Film')
+data1$Solvent = 'DMF'
+data2$Solvent = 'CHCl3'
+data3$Solvent = 'THF'
+data4$Solvent = 'Film'
+colnames(data1)[ncol(data1)-1] = 'Emission'
+colnames(data2)[ncol(data2)-1] = 'Emission'
+colnames(data3)[ncol(data3)-1] = 'Emission'
+colnames(data4)[ncol(data4)-1] = 'Emission'
+data = rbind(data1,data2,data3,data4)
+data$Solvent = as.factor(data$Solvent)
+data = data[complete.cases(data$Emission), c('cruciform','Axis1','Axis2','HOMO','LUMO','EG','Lmax','Dihedral26','Dihedral48','KK','Solvent','Emission')]
+data_c = data[,c('cruciform','HOMO','LUMO','EG','Lmax','Dihedral26','Dihedral48','KK','Solvent','Emission')]
+data_f = data[,c('Axis1','Axis2','Solvent','Emission')]
+for (i in 1:nrow(data_f)){
+  a1 = 0
+  a2 = 0
+  for (j in 1:nrow(fragments)) {
+    if (a1==1 & a2==1){
+      break
+    }
+    if(fragments$fragment[j] == data_f$Axis1[i]){
+      data_f$'2,6 HOMO'[i] = fragments$HOMO[j]
+      data_f$'2,6 LUMO'[i] = fragments$LUMO[j]
+      data_f$'2,6 EG'[i] = fragments$EG[j]
+      data_f$'2,6 Lmax'[i] = fragments$Lmax[j]
+      data_f$'2,6 Dihedral26'[i] = fragments$Dihedral26[j]
+      data_f$'2,6 Dihedral48'[i] = fragments$Dihedral48[j]
+      data_f$'2,6 KK'[i] = fragments$KK[j]
+      a1 = 1
+    }
+    if(fragments$fragment[j] == data_f$Axis2[i]){
+      data_f$'4,8 HOMO'[i] = fragments$HOMO[j]
+      data_f$'4,8 LUMO'[i] = fragments$LUMO[j]
+      data_f$'4,8 EG'[i] = fragments$EG[j]
+      data_f$'4,8 Lmax'[i] = fragments$Lmax[j]
+      data_f$'4,8 Dihedral26'[i] = fragments$Dihedral26[j]
+      data_f$'4,8 Dihedral48'[i] = fragments$Dihedral48[j]
+      data_f$'4,8 KK'[i] = fragments$KK[j]
+      a2 = 1
+    }
+  }
+}
+data_f = data_f[,c('2,6 HOMO','2,6 LUMO','2,6 EG','2,6 Lmax','2,6 Dihedral26','2,6 Dihedral48','2,6 KK','4,8 HOMO','4,8 LUMO','4,8 EG','4,8 Lmax','4,8 Dihedral26','4,8 Dihedral48','4,8 KK','Solvent','Emission')]
+data_c = data_c[47:135,c('cruciform','HOMO','LUMO','EG','Lmax','KK','Solvent','Emission')]
+data_f = data_f[47:135,c('2,6 HOMO','2,6 LUMO','2,6 EG','2,6 Lmax','2,6 KK','4,8 HOMO','4,8 LUMO','4,8 EG','4,8 Lmax','4,8 KK','Solvent','Emission')]
+```
+
+```{r}
+c = data_c[32:35,]
+f = data_f[32:35,]
+data_c = rbind(data_c[-c(32:35),],c)
+data_f = rbind(data_f[-c(32:35),],f)
+rm(list=setdiff(ls(), c("data_f",'data_c')))
+```
+
+```{r}
+cruciforms = as.data.frame(sapply(data_c[,-1], as.numeric))
+cruciforms$Solvent = data_c$Solvent
+cruciforms$cruciform = data_c$cruciform
+fragments = as.data.frame(sapply(data_f, as.numeric))
+fragments$Solvent = data_f$Solvent
+```
+
+
+```{r}
+saveRDS(cruciforms, "/projectnb/darpa/pyuning/frag modeling/Ensemble models/cruciforms.rds")
+saveRDS(fragments, "/projectnb/darpa/pyuning/frag modeling/Ensemble models/fragments.rds")
+#write.xlsx(cruciforms,'/projectnb/darpa/pyuning/frag modeling/Ensemble models/data_c.xlsx',row.names = FALSE)
+#write.xlsx(fragments,'/projectnb/darpa/pyuning/frag modeling/Ensemble models/data_f.xlsx',row.names = FALSE)
+```

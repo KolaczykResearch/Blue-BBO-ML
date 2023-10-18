@@ -1,0 +1,220 @@
+---
+title: "Ensemble Modeling"
+author: "Yuning Pan"
+date: '2023-03-13'
+output: html_document
+---
+
+This file has the ensemble frameworks of cruciform and fragment models.
+```{r}
+library(readxl)
+library("xlsx")
+#cruciforms = read.xlsx("/projectnb/darpa/pyuning/frag modeling/Ensemble models/data_c.xlsx",1)
+#fragments = read.xlsx("/projectnb/darpa/pyuning/frag modeling/Ensemble models/data_f.xlsx",1)
+cruciforms <- readRDS("/projectnb/darpa/pyuning/frag modeling/Ensemble models/cruciforms.rds")
+fragments <- readRDS("/projectnb/darpa/pyuning/frag modeling/Ensemble models/fragments.rds")
+cruciform = paste0(cruciforms$cruciform,'-',cruciforms$Solvent)
+```
+
+generate data matrices to be fed into XGBoost model
+```{r}
+cruciforms$Solvent = as.numeric(as.factor(cruciforms$Solvent))
+fragments$Solvent = as.numeric(as.factor(fragments$Solvent))
+cruciforms = cruciforms[,c('HOMO','EG','Lmax','KK','Solvent','Emission')]
+fragments = fragments[,c('2,6 HOMO','2,6 EG','2,6 Lmax','2,6 KK','4,8 HOMO','4,8 EG','4,8 Lmax','4,8 KK','Solvent','Emission')]
+
+#data for cruciform model
+data_c_variables <- as.matrix(cruciforms[1:81,-ncol(cruciforms)])
+data_c_y <- cruciforms[1:81,"Emission"]
+validate_c_variables <- as.matrix(cruciforms[82:89,-ncol(cruciforms)])
+validate_c_y <- cruciforms[82:89,"Emission"]
+
+#data for fragment model
+data_f_variables <- as.matrix(fragments[1:81,-ncol(fragments)])
+data_f_y <- fragments[1:81,"Emission"]
+validate_f_variables <- as.matrix(fragments[82:89,-ncol(fragments)])
+validate_f_y <- fragments[82:89,"Emission"]
+```
+
+main model: store prediction results and ale as the outputs
+```{r}
+library("xgboost")  # the main algorithm
+library("caret")
+library(ALEPlot)
+
+yhat <- function(X.model, newdata){
+  predict(X.model, newdata)
+}
+
+#Model & CV Settings
+grid_tune <- expand.grid(
+  nrounds = c(500,750,1000), #number of trees
+  max_depth = c(2,4,6),
+  eta = c(0.025,0.05,0.1,0.3), #c(0.025,0.05,0.1,0.3), #Learning rate
+  gamma = c(0, 0.05, 0.1, 0.5, 0.7, 0.9, 1.0), # pruning --> Should be tuned. i.e c(0, 0.05, 0.1, 0.5, 0.7, 0.9, 1.0)
+  colsample_bytree = 0.7, # c(0.4, 0.6, 0.8, 1.0) subsample ratio of columns for tree
+  min_child_weight = 1, # c(1,2,3) # the larger, the more conservative the model
+  #is; can be used as a stop
+  subsample = 0.7 # c(0.5, 0.75, 1.0) # used to prevent overfitting by sampling X% training
+)
+
+train_control <- trainControl(method = "cv",
+                              number=9,
+                              verboseIter = FALSE,
+                              allowParallel = TRUE)
+
+
+#ALE example
+#xgm = caret::train(x=data_c_variables,y=data_c_y, trControl=train_control, tuneGrid = grid_tune, method = 'xgbTree',verbose = TRUE)
+#xgm_he = ALEPlot(data_c_variables, xgm, yhat, J=c(1,2),K=40)
+#xgm_he$K
+#xgm_he$x.values
+#xgm_he$f.values
+
+#Cruciform model
+XGB_C <- function(folds = 10, seeds = 2023){
+  set.seed(seeds);index = sample(length(data_c_y), size = length(data_c_y)/folds)
+  train_c_data <- data_c_variables[-index,]
+  test_c_data <- data_c_variables[index,]
+  train_c_y <- data_c_y[-index]
+  test_c_y <- data_c_y[index]
+  set.seed(2023);xgb_tune <- caret::train(x = train_c_data, y = train_c_y, trControl = train_control, tuneGrid = grid_tune, method= "xgbTree", verbose = FALSE) #1
+  test_mol = cruciform[index]  #2
+  xgb.pred <- predict(xgb_tune, test_c_data)  #3
+  validate.pred <- predict(xgb_tune, validate_c_variables) #4
+  xgb.rmse = caret::RMSE(test_c_y, xgb.pred)   #5
+  validate.rmse = caret::RMSE(validate_c_y, validate.pred)   #6
+  xgb.imp <- varImp(xgb_tune)
+  xgb.imp = xgb.imp$importance   #7
+  ale_homo = ALEPlot(train_c_data, xgb_tune, yhat, J=c(1), K = 40, NA.plot = TRUE)   #8
+  ale_eg = ALEPlot(train_c_data, xgb_tune, yhat, J=c(2), K = 40, NA.plot = TRUE)   #9
+  ale_lmax = ALEPlot(train_c_data, xgb_tune, yhat, J=c(3), K = 40, NA.plot = TRUE)   #10
+  ale_kk = ALEPlot(train_c_data, xgb_tune, yhat, J=c(4), K = 40, NA.plot = TRUE)   #11
+  ale_solvent = ALEPlot(train_c_data, xgb_tune, yhat, J=c(5), K = 40, NA.plot = TRUE)   #12
+  ale_he = ALEPlot(train_c_data, xgb_tune, yhat, J=c(1,2), K = 40, NA.plot = TRUE)   #13
+  #train.pred <- predict(xgb_tune, train_c_data)
+  #train.rmse <- caret::RMSE(train_c_y,train.pred)   #14
+  return(list(xgb_tune,test_mol,xgb.pred,validate.pred,xgb.rmse,validate.rmse,xgb.imp,ale_homo,ale_eg,ale_lmax,ale_kk,ale_solvent,ale_he))
+}
+
+#Fragment model
+XGB_F <- function(folds = 10, seeds = 2023){
+  set.seed(seeds);index = sample(length(data_f_y), size = length(data_f_y)/folds)
+  train_f_data <- data_f_variables[-index,]
+  test_f_data <- data_f_variables[index,]
+  train_f_y <- data_f_y[-index]
+  test_f_y <- data_f_y[index]
+  set.seed(2023);xgb_tune <- caret::train(x = train_f_data, y = train_f_y, trControl = train_control, tuneGrid = grid_tune, method= "xgbTree", verbose = FALSE)  #1
+  test_mol = cruciform[index]  #2
+  xgb.pred <- predict(xgb_tune, test_f_data)  #3
+  validate.pred <- predict(xgb_tune, validate_f_variables) #4
+  xgb.rmse = caret::RMSE(test_f_y, xgb.pred)   #5
+  validate.rmse = caret::RMSE(validate_f_y, validate.pred)   #6
+  xgb.imp <- varImp(xgb_tune)
+  xgb.imp = xgb.imp$importance   #7
+  ale_a1homo = ALEPlot(train_f_data, xgb_tune, yhat, J=c(1), K = 40, NA.plot = TRUE)   #8
+  ale_a1eg = ALEPlot(train_f_data, xgb_tune, yhat, J=c(2), K = 40, NA.plot = TRUE)   #9
+  ale_a1lmax = ALEPlot(train_f_data, xgb_tune, yhat, J=c(3), K = 40, NA.plot = TRUE)   #10
+  ale_a1kk = ALEPlot(train_f_data, xgb_tune, yhat, J=c(4), K = 40, NA.plot = TRUE)   #11
+  ale_a2homo = ALEPlot(train_f_data, xgb_tune, yhat, J=c(5), K = 40, NA.plot = TRUE)   #12
+  ale_a2eg = ALEPlot(train_f_data, xgb_tune, yhat, J=c(6), K = 40, NA.plot = TRUE)   #13
+  ale_a2lmax = ALEPlot(train_f_data, xgb_tune, yhat, J=c(7), K = 40, NA.plot = TRUE)   #14
+  ale_a2kk = ALEPlot(train_f_data, xgb_tune, yhat, J=c(8), K = 40, NA.plot = TRUE)   #15
+  ale_solvent = ALEPlot(train_f_data, xgb_tune, yhat, J=c(9), K = 40, NA.plot = TRUE)   #16
+  #train.pred <- predict(xgb_tune, train_f_data)
+  #train.rmse <- caret::RMSE(train_f_y,train.pred)   #17
+  return(list(xgb_tune,test_mol,xgb.pred,validate.pred,xgb.rmse,validate.rmse,xgb.imp,ale_a1homo,ale_a1eg,ale_a1lmax,ale_a1kk,ale_a2homo,ale_a2eg,ale_a2lmax,ale_a2kk,ale_solvent))
+}
+```
+
+parallel computing for efficiency
+```{r}
+list.of.packages <- c(
+  "foreach",
+  "doParallel",
+  "ranger",
+  "palmerpenguins",
+  "tidyverse",
+  "kableExtra"
+  )
+
+new.packages <- list.of.packages[!(list.of.packages %in% installed.packages()[,"Package"])]
+
+if(length(new.packages) > 0){
+  install.packages(new.packages, dep=TRUE)
+}
+
+#loading packages
+for(package.i in list.of.packages){
+  suppressPackageStartupMessages(
+    library(
+      package.i, 
+      character.only = TRUE
+      )
+    )
+}
+library(foreach)
+parallel::detectCores()
+n.cores <- parallel::detectCores() - 1
+my.cluster <- parallel::makeCluster(
+  n.cores, 
+  type = "PSOCK"
+  )
+print(my.cluster)
+doParallel::registerDoParallel(cl = my.cluster) #register it to be used by %dopar%
+foreach::getDoParRegistered() #check if it is registered
+foreach::getDoParWorkers()  #how many workers are available
+```
+
+```{r}
+iterations = 100
+
+results_c <- foreach(i=1:iterations, .combine = 'cbind',.packages='ALEPlot') %dopar%
+  {
+    XGB_C(folds = 10, seeds = i)
+  }
+
+results_f <- foreach(i=1:iterations, .combine = 'cbind',.packages='ALEPlot') %dopar%
+  {
+    XGB_F(folds = 10, seeds = i)
+  }
+stopCluster(my.cluster)
+```
+
+save model outputs
+```{r}
+saveRDS(results_c, "/projectnb/darpa/pyuning/frag modeling/Ensemble models/results_c.rds")
+saveRDS(results_f, "/projectnb/darpa/pyuning/frag modeling/Ensemble models/results_f.rds")
+rm(list=setdiff(ls(), "validate_f_y"))
+```
+
+
+```{r}
+results_c <- readRDS("/projectnb/darpa/pyuning/frag modeling/Ensemble models/results_c.rds")
+results_f <- readRDS("/projectnb/darpa/pyuning/frag modeling/Ensemble models/results_f.rds")
+```
+
+some simple analysis
+```{r}
+validate.pred_c = matrix(unlist(results_c[4,]),ncol=8,byrow = TRUE)
+validate.pred_f = matrix(unlist(results_f[4,]),ncol=8,byrow = TRUE)
+validate.pred_c = apply(validate.pred_c, 2, mean) # prediction of the cruciform model on the unpublished data
+validate.pred_f = apply(validate.pred_f, 2, mean) # prediction of the fragment model on the unpublished data
+validate_f_y # true wavelength
+validate.pred_c
+validate.pred_f
+caret::RMSE(validate_c_y, validate.pred_c)
+caret::RMSE(validate_f_y, validate.pred_f)
+
+mean(unlist(results_c[5,])) # RMSE of the cruciform model on the testing sets
+mean(unlist(results_f[5,])) # RMSE of the fragment model on the testing sets
+summary(unlist(results_c[5,])) # 5 number summary of the RMSEs from cruciform model
+summary(unlist(results_f[5,])) # 5 number summary of the RMSEs from fragment model
+mean(unlist(results_c[6,])) # RMSE of the cruciform model on the unpublished data
+mean(unlist(results_f[6,])) # RMSE of the fragment model on the unpublished data
+
+sd(unlist(results_c[5,]))
+sd(unlist(results_f[5,]))
+sd(unlist(results_c[6,]))
+sd(unlist(results_f[6,]))
+```
