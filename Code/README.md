@@ -1,7 +1,7 @@
 # Coding Sections
 
 ## 1. Data cleaning
-(1) 'Data cleaning.Rmd' cleans the row data and puts the data as a dataframe to be fed into models.
+(1) 'Data cleaning.Rmd' cleans the raw data and puts the data as a dataframe to be fed into the models.
 
 (2) The two scraping files extract the computing details (e.g. time, cores) from the ORCA output files, and help estimate the computation costs. (reported on the paper as Table 2)
 
