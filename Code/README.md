@@ -6,7 +6,7 @@
 (2) The two scraping files extract the computing details (e.g. time, cores) from the ORCA output files, and help estimate the computation costs. (reported on the paper as Table 2)
 
 ## 2. Modeling
-(1) 'Ensemble Modeling.Rmd' builds the cruciform and fragment ensemble frameworks using XGBoost model. Within the building blocks of the frameworks, we also stored out-of-bag prediction error, ALE for some of the features, and etc for the following analysis.
+(1) 'Ensemble Modeling.Rmd' builds the cruciform and fragment ensemble frameworks using XGBoost model. Within the building blocks of the frameworks, we also stored out-of-bag prediction error (i.e. RMSE, MAE, MSE, MAPE), ALE for some of the features, and etc for the following analysis.
 
 (2) 'GBM.Rmd' builds the cruciform and fragement ensemble frameworks using GBM model, and is for the comparison purpose. We only checked the prediction performance of it, but did not analyze the model.
 
