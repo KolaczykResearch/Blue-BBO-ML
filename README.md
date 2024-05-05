@@ -1,3 +1,3 @@
 # Blue-BBO-ML
 
-![Structures](Structures-Cruciforms&Fragments.jpeg)
+[Structures](Structures-Cruciforms&Fragments.jpeg)
