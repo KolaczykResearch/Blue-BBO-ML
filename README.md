@@ -1,5 +1,5 @@
 # Introduction
-This is the GitHub site for the paper "Predicting Emission Wavelengths in Benzobisoxazole-Based OLEDs with Gradient Boosted Ensemble Models``
+This is the GitHub site for the paper "Predicting Emission Wavelengths in Benzobisoxazole-Based OLEDs with Gradient Boosted Ensemble Models"
 
 https://pubs.acs.org/doi/10.1021/acs.jpca.4c00077
 
